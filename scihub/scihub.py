@@ -2,7 +2,7 @@
 
 """
 Sci-API Unofficial API
-[Search|Download] research papers from [scholar.google.com|sci-hub.io].
+[Search|Download] research papers from [scholar.google.com|pismin.com].
 
 @author zaytoun
 """
@@ -33,7 +33,7 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/2010010
 class SciHub(object):
     """
     SciHub class can search for papers on Google Scholars 
-    and fetch/download papers from sci-hub.io
+    and fetch/download papers from pismin.com
     """
 
     def __init__(self):
@@ -44,14 +44,9 @@ class SciHub(object):
 
     def _get_available_scihub_urls(self):
         '''
-        Finds available scihub urls via https://sci-hub.now.sh/
+        Finds available pismin urls
         '''
-        urls = []
-        res = requests.get('https://sci-hub.now.sh/')
-        s = self._get_soup(res.content)
-        for a in s.find_all('a', href=True):
-            if 'sci-hub.' in a['href']:
-                urls.append(a['href'])
+        urls = ['https://www.pismin.com']
         return urls
 
     def set_proxy(self, proxy):
@@ -67,8 +62,8 @@ class SciHub(object):
 
     def _change_base_url(self):
         if not self.available_base_url_list:
-            raise Exception('Ran out of valid sci-hub urls')
-        del self.available_base_url_list[0]
+            raise Exception('Ran out of valid pismin urls')
+        # For pismin.com, there's only one URL, so reset it instead of deleting
         self.base_url = self.available_base_url_list[0] + '/'
         logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
 
@@ -136,31 +131,24 @@ class SciHub(object):
 
     def fetch(self, identifier):
         """
-        Fetches the paper by first retrieving the direct link to the pdf.
-        If the indentifier is a DOI, PMID, or URL pay-wall, then use Sci-Hub
+        Fetches the paper by constructing the pismin URL.
+        If the indentifier is a DOI, PMID, or URL pay-wall, then use Pismin
         to access and download paper. Otherwise, just download paper directly.
         """
 
+        url = None
         try:
             url = self._get_direct_url(identifier)
 
-            # verify=False is dangerous but sci-hub.io 
-            # requires intermediate certificates to verify
-            # and requests doesn't know how to download them.
-            # as a hacky fix, you can add them to your store
-            # and verifying would work. will fix this later.
             res = self.sess.get(url, verify=False)
 
             if res.headers['Content-Type'] != 'application/pdf':
                 self._change_base_url()
-                logger.info('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
-                raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
-                # return {
-                #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
-                #            % (identifier, url)
-                # }
+                error_msg = 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha' % (identifier, url)
+                logger.info(error_msg)
+                return {
+                    'err': error_msg
+                }
             else:
                 return {
                     'pdf': res.content,
@@ -171,15 +159,29 @@ class SciHub(object):
         except requests.exceptions.ConnectionError:
             logger.info('Cannot access {}, changing url'.format(self.available_base_url_list[0]))
             self._change_base_url()
-
-        except requests.exceptions.RequestException as e:
-            logger.info('Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url))
             return {
-                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url)
+                'err': 'Connection error while fetching paper with identifier %s' % identifier
             }
 
+        except requests.exceptions.RequestException as e:
+            error_msg = 'Failed to fetch pdf with identifier %s' % identifier
+            if url:
+                error_msg += ' (resolved url %s)' % url
+            error_msg += ' due to request exception.'
+            logger.info(error_msg)
+            return {
+                'err': error_msg
+            }
+
+        except Exception as e:
+            error_msg = 'Failed to fetch pdf with identifier %s' % identifier
+            if url:
+                error_msg += ' (resolved url %s)' % url
+            error_msg += ' due to error: %s' % str(e)
+            logger.info(error_msg)
+            return {
+                'err': error_msg
+            }
     def _get_direct_url(self, identifier):
         """
         Finds the direct source url for a given identifier.
@@ -191,15 +193,30 @@ class SciHub(object):
 
     def _search_direct_url(self, identifier):
         """
-        Sci-Hub embeds papers in an iframe. This function finds the actual
-        source url which looks something like https://moscow.sci-hub.io/.../....pdf.
+        Pismin website access. This function finds the actual PDF URL from pismin.com.
         """
-        res = self.sess.get(self.base_url + identifier, verify=False)
+        # For DOI URLs, extract just the DOI part (e.g., 10.1155/2020/8873655)
+        if identifier.startswith('http'):
+            # Extract DOI from URL if it contains one
+            if 'doi.org/' in identifier:
+                identifier = identifier.split('doi.org/')[-1]
+        
+        # First, fetch the pismin page to get the PDF URL
+        pismin_url = self.base_url + identifier
+        res = self.sess.get(pismin_url, verify=False)
         s = self._get_soup(res.content)
-        iframe = s.find('iframe')
-        if iframe:
-            return iframe.get('src') if not iframe.get('src').startswith('//') \
-                else 'http:' + iframe.get('src')
+        
+        # Look for PDF URL in the page
+        pdf_urls = re.findall(r'https?://[^"\s]+\.pdf[^"\s]*', str(s))
+        if pdf_urls:
+            # Get the first PDF URL
+            pdf_url = pdf_urls[0]
+            # Unescape any HTML entities
+            pdf_url = pdf_url.replace('\\/', '/')
+            return pdf_url
+        
+        # Fallback: return the original URL if no PDF URL found
+        return pismin_url
 
     def _classify(self, identifier):
         """

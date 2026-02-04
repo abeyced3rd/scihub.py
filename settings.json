@@ -1,1 +1,1 @@
-{"proxy": "socks5://user:pass@host:port", "serpapi_key": "TESTKEY"}
+{"proxy": null, "serpapi_key": null}
