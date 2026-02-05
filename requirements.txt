@@ -4,3 +4,7 @@ retrying
 pysocks
 flask
 scholarly
+flask-sqlalchemy
+flask-migrate
+pdfminer.six
+markdown

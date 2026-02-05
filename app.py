@@ -13,9 +13,16 @@ import config
 import json
 from urllib.parse import urlencode
 import requests as _requests
+# research assistant
+from research_assistant import init_app as ra_init_app
+from research_assistant.views import bp as ra_bp
 
 app = Flask(__name__)
 app.config.from_object(config)
+
+# Initialize Research Assistant DB and register blueprint
+ra_init_app(app)
+app.register_blueprint(ra_bp)
 
 # Ensure downloads folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -65,9 +72,21 @@ if _settings.get('proxy'):
 
 
 @app.route('/')
+def welcome():
+    """Render welcome/home page"""
+    return render_template('welcome.html')
+
+
+@app.route('/search')
 def index():
-    """Render the main page"""
+    """Render the search and download page"""
     return render_template('index.html')
+
+
+@app.route('/ra')
+def research_assistant_index():
+    """Render Research Assistant page"""
+    return render_template('research_assistant_index.html')
 
 
 @app.route('/api/search', methods=['POST'])

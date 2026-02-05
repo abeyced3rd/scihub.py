@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Research Assistant</title>
+  <style>body{font-family:Arial,Helvetica,sans-serif;padding:20px;} .card{background:#fff;padding:16px;border-radius:8px;margin-bottom:12px;}</style>
+</head>
+<body>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <h1>🧠 Research Assistant</h1>
+    <a href="/" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white; padding:8px 16px; border-radius:4px; text-decoration:none; font-size:0.9em;">← Home</a>
+  </div>
+
+  <div style="display:flex; gap:20px;">
+    <div style="flex:1">
+      <div class="card">
+        <h2>Upload Material</h2>
+        <input type="file" id="fileInput">
+        <button onclick="upload()">Upload</button>
+        <div id="uploadResult"></div>
+      </div>
+
+      <div class="card">
+        <h2>Materials</h2>
+        <div id="materials"></div>
+      </div>
+    </div>
+
+    <div style="flex:2">
+      <div class="card">
+        <h2 id="materialTitle">Select a material</h2>
+        <div id="materialActions" style="margin-bottom:12px;"></div>
+        <div id="chapters"></div>
+      </div>
+
+      <div class="card">
+        <h2 id="sectionTitle">Section</h2>
+        <div id="sectionEditor" style="display:none">
+          <input type="text" id="secTitle" style="width:100%; margin-bottom:8px;" />
+          <textarea id="secContent" style="width:100%; height:200px"></textarea>
+          <div style="margin-top:8px;"><button onclick="saveSection()">Save Section</button></div>
+        </div>
+        <div id="sectionViewer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/ra';
+    let selectedMaterial = null;
+    let selectedChapter = null;
+    let selectedSection = null;
+
+    function upload(){
+      const f = document.getElementById('fileInput').files[0];
+      if(!f){ document.getElementById('uploadResult').innerText='Select file'; return; }
+      const fd = new FormData(); fd.append('file', f);
+      fetch(API_BASE+'/materials',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{ document.getElementById('uploadResult').innerText='Uploaded: '+d.filename; loadMaterials(); });
+    }
+
+    function loadMaterials(){
+      fetch(API_BASE+'/materials').then(r=>r.json()).then(list=>{
+        const c=document.getElementById('materials'); c.innerHTML='';
+        list.forEach(m=>{
+          const el=document.createElement('div');
+          el.style.padding='6px 0';
+          el.innerHTML=`<strong>${escapeHtml(m.filename)}</strong> <button onclick="showMaterial(${m.id})">Open</button>`;
+          c.appendChild(el);
+        });
+      });
+    }
+
+    function showMaterial(mid){
+      fetch(API_BASE+`/materials/${mid}`).then(r=>r.json()).then(m=>{
+        selectedMaterial = m;
+        document.getElementById('materialTitle').innerText = m.filename;
+        document.getElementById('materialActions').innerHTML = `<button onclick="createChapter(${m.id})">Create Chapter</button>`;
+        renderChapters(m.chapters);
+      });
+    }
+
+    function renderChapters(chaps){
+      const c = document.getElementById('chapters'); c.innerHTML='';
+      if(!chaps || chaps.length===0){ c.innerHTML='<em>No chapters yet</em>'; return; }
+      chaps.forEach(ch=>{
+        const el=document.createElement('div'); el.style.borderTop='1px solid #eee'; el.style.padding='8px 0';
+        el.innerHTML = `<strong>${escapeHtml(ch.title)}</strong> <button onclick="openChapter(${ch.id})">Open</button> <button onclick="generateSections(${ch.id})">Generate Sections</button>`;
+        c.appendChild(el);
+      });
+    }
+
+    function createChapter(mid){
+      const title = prompt('Chapter title'); if(!title) return;
+      fetch(API_BASE+`/materials/${mid}/chapters`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})}).then(r=>r.json()).then(d=>{ showMaterial(mid); });
+    }
+
+    function openChapter(cid){
+      selectedChapter = cid;
+      fetch(API_BASE+`/chapters/${cid}/sections`).then(r=>r.json()).then(list=>{
+        const container = document.getElementById('chapters');
+        // find chapter title
+        const ch = (selectedMaterial && selectedMaterial.chapters||[]).find(x=>x.id===cid)||{};
+        document.getElementById('sectionTitle').innerText = (ch.title||'Chapter') + ' — Sections';
+        const viewer = document.getElementById('sectionViewer'); viewer.innerHTML='';
+        if(list.length===0) viewer.innerHTML='<em>No sections yet</em>';
+        list.forEach(s=>{
+          const se = document.createElement('div'); se.style.padding='8px 0'; se.innerHTML = `<strong>${escapeHtml(s.title)}</strong> <button onclick="viewSection(${s.id})">View</button> <button onclick="editSection(${s.id})">Edit</button>`; viewer.appendChild(se);
+        });
+      });
+    }
+
+    function generateSections(cid){
+      if(!confirm('Generate sections for this chapter?')) return;
+      fetch(API_BASE+`/chapters/${cid}/generate-sections`,{method:'POST'}).then(r=>r.json()).then(d=>{
+        if(d.error) alert(d.error); else { alert('Generated '+(d.sections||[]).length+' sections'); openChapter(cid); }
+      });
+    }
+
+    function viewSection(sid){
+      selectedSection = sid;
+      fetch(API_BASE+`/sections/${sid}`).then(r=>r.json()).then(s=>{
+        document.getElementById('sectionEditor').style.display='none';
+        document.getElementById('sectionViewer').innerHTML = `<h3>${escapeHtml(s.title)}</h3><pre style="white-space:pre-wrap">${escapeHtml(s.content||'')}</pre>`;
+      });
+    }
+
+    function editSection(sid){
+      selectedSection = sid;
+      fetch(API_BASE+`/sections/${sid}`).then(r=>r.json()).then(s=>{
+        document.getElementById('sectionEditor').style.display='block';
+        document.getElementById('sectionViewer').innerHTML='';
+        document.getElementById('secTitle').value = s.title||'';
+        document.getElementById('secContent').value = s.content||'';
+      });
+    }
+
+    function saveSection(){
+      if(!selectedSection) return alert('No section selected');
+      const data = { title: document.getElementById('secTitle').value, content: document.getElementById('secContent').value };
+      fetch(API_BASE+`/sections/${selectedSection}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()).then(d=>{ alert('Saved'); viewSection(selectedSection); });
+    }
+
+    function escapeHtml(text){ if(!text) return ''; return String(text).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    loadMaterials();
+  </script>
+</body>
+</html>

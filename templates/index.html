@@ -24,20 +24,39 @@
         }
 
         header {
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             color: white;
             margin-bottom: 30px;
         }
 
         header h1 {
             font-size: 2.5em;
-            margin-bottom: 10px;
+            margin-bottom: 0;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        header a {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+
+        header a:hover {
+            background: rgba(255,255,255,0.3);
         }
 
         header p {
             font-size: 1.1em;
             opacity: 0.9;
+            flex-grow: 1;
+            text-align: center;
+            margin: 0 15px;
         }
 
         .main-content {
@@ -365,7 +384,8 @@
     <div class="container">
         <header>
             <h1>🔬 SciHub</h1>
-            <p>Search and download research papers without the command line</p>
+            <p>Search and download research papers</p>
+            <a href="/">← Home</a>
         </header>
 
         <div class="main-content">
