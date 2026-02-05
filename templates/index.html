@@ -380,24 +380,6 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="proxyInput">Proxy (optional)</label>
-                    <input type="text" id="proxyInput" placeholder="e.g., socks5://user:pass@host:port">
-                    <div style="margin-top:8px; display:flex; gap:8px;">
-                        <button class="secondary-btn" onclick="setProxy()">Set Proxy</button>
-                        <button class="secondary-btn" onclick="clearProxy()">Clear Proxy</button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="serpKey">SerpAPI Key (optional)</label>
-                    <input type="text" id="serpKey" placeholder="Enter SerpAPI key to use Google Scholar via SerpAPI">
-                    <div style="margin-top:8px; display:flex; gap:8px;">
-                        <button class="secondary-btn" onclick="setSerpKey()">Save Key</button>
-                        <button class="secondary-btn" onclick="clearSerpKey()">Clear Key</button>
-                    </div>
-                </div>
-
-                <div class="form-group">
                     <label for="searchLimit">Results Limit</label>
                     <input type="number" id="searchLimit" min="1" max="50" value="10">
                 </div>
@@ -564,59 +546,9 @@
             });
         }
 
-        function setProxy() {
-            const proxy = document.getElementById('proxyInput').value.trim();
-            if (!proxy) {
-                showAlert('searchAlerts', 'Please enter a proxy URL', 'error');
-                return;
-            }
 
-            fetch(`${API_BASE}/set_proxy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ proxy })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) showAlert('searchAlerts', `Error: ${data.error}`, 'error');
-                else showAlert('searchAlerts', data.message || 'Proxy set', 'success');
-            })
-            .catch(err => showAlert('searchAlerts', `Error: ${err.message}`, 'error'));
-        }
 
-        function clearProxy() {
-            fetch(`${API_BASE}/set_proxy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ proxy: '' })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) showAlert('searchAlerts', `Error: ${data.error}`, 'error');
-                else {
-                    document.getElementById('proxyInput').value = '';
-                    showAlert('searchAlerts', data.message || 'Proxy cleared', 'success');
-                }
-            })
-            .catch(err => showAlert('searchAlerts', `Error: ${err.message}`, 'error'));
-        }
 
-        function setSerpKey() {
-            const key = document.getElementById('serpKey').value.trim();
-            if (!key) { showAlert('searchAlerts', 'Please enter SerpAPI key', 'error'); return; }
-
-            fetch(`${API_BASE}/set_serpapi`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key })
-            })
-            .then(r => r.json()).then(d => { if (d.error) showAlert('searchAlerts', `Error: ${d.error}`, 'error'); else showAlert('searchAlerts', d.message||'Saved', 'success'); })
-            .catch(e => showAlert('searchAlerts', `Error: ${e.message}`, 'error'));
-        }
-
-        function clearSerpKey() {
-            fetch(`${API_BASE}/set_serpapi`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: '' }) })
-            .then(r => r.json()).then(d => { if (d.error) showAlert('searchAlerts', `Error: ${d.error}`, 'error'); else { document.getElementById('serpKey').value=''; showAlert('searchAlerts', d.message||'Cleared', 'success'); } })
-            .catch(e => showAlert('searchAlerts', `Error: ${e.message}`, 'error'));
-        }
 
         function displaySearchResults(papers) {
             const container = document.getElementById('searchResultsList');

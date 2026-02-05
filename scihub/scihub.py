@@ -17,6 +17,11 @@ import requests
 import urllib3
 from bs4 import BeautifulSoup
 from retrying import retry
+try:
+    from scholarly import scholarly
+    SCHOLARLY_AVAILABLE = True
+except ImportError:
+    SCHOLARLY_AVAILABLE = False
 
 # log config
 logging.basicConfig()
@@ -48,6 +53,74 @@ class SciHub(object):
         '''
         urls = ['https://www.pismin.com']
         return urls
+
+    def search_scholarly(self, query, limit=10):
+        """
+        Searches for papers on Google Scholar using the scholarly library.
+        This is a more reliable alternative to web scraping.
+        
+        :param query: Search query string
+        :param limit: Maximum number of results to return
+        :return: Dictionary with 'papers' list or 'err' key if error occurs
+        """
+        if not SCHOLARLY_AVAILABLE:
+            return {'err': 'scholarly library is not installed'}
+        
+        results = {'papers': []}
+        
+        try:
+            search_query = scholarly.search_pubs(query)
+            count = 0
+            
+            for pub in search_query:
+                if count >= limit:
+                    break
+                
+                try:
+                    # Extract bibliographic information
+                    bib = pub.get('bib', {})
+                    title = bib.get('title', 'Unknown Title')
+                    
+                    # Get URL from pub_url
+                    url = pub.get('pub_url', '')
+                    
+                    paper_data = {
+                        'name': title,
+                        'url': url,
+                    }
+                    
+                    # Add additional metadata from bib
+                    if 'author' in bib:
+                        paper_data['authors'] = ', '.join(bib.get('author', []))
+                    
+                    if 'pub_year' in bib:
+                        paper_data['year'] = bib.get('pub_year')
+                    
+                    if 'venue' in bib and bib.get('venue') != 'NA':
+                        paper_data['venue'] = bib.get('venue')
+                    
+                    if 'abstract' in bib:
+                        paper_data['abstract'] = bib.get('abstract')
+                    
+                    # Add citation count if available
+                    if 'num_citations' in pub:
+                        paper_data['citations'] = pub.get('num_citations', 0)
+                    
+                    results['papers'].append(paper_data)
+                    count += 1
+                except Exception as e:
+                    logger.debug(f"Error processing paper: {e}")
+                    continue
+            
+            if not results['papers']:
+                results['err'] = f'No papers found for query: {query}'
+            
+            return results
+            
+        except Exception as e:
+            error_msg = f'Failed to search with scholarly library: {str(e)}'
+            logger.error(error_msg)
+            return {'err': error_msg}
 
     def set_proxy(self, proxy):
         '''

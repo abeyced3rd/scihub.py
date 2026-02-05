@@ -77,6 +77,7 @@ def search():
         data = request.get_json()
         query = data.get('query', '')
         limit = int(data.get('limit', config.DEFAULT_SEARCH_RESULTS))
+        search_engine = data.get('engine', 'scholarly')  # Default to 'scholarly' for reliability
         
         if not query:
             return jsonify({'error': 'Query is required'}), 400
@@ -84,11 +85,35 @@ def search():
         if limit > config.MAX_SEARCH_RESULTS:
             limit = config.MAX_SEARCH_RESULTS  # Cap at max results
         
-        logger.info(f"Searching for: {query} (limit: {limit})")
+        logger.info(f"Searching for: {query} (limit: {limit}, engine: {search_engine})")
+
+        # Use scholarly library if requested (default)
+        if search_engine == 'scholarly':
+            results = sh.search_scholarly(query, limit=limit)
+            if 'err' in results:
+                # If scholarly fails, try default scraping as fallback
+                logger.warning(f"Scholarly search failed: {results['err']}, trying default method...")
+                results = sh.search(query, limit=limit)
+                if 'err' in results:
+                    return jsonify({'error': results['err']}), 400
+                return jsonify({
+                    'success': True,
+                    'papers': results.get('papers', []),
+                    'count': len(results.get('papers', [])),
+                    'engine': 'default (fallback)'
+                })
+            return jsonify({
+                'success': True,
+                'papers': results.get('papers', []),
+                'count': len(results.get('papers', [])),
+                'engine': 'scholarly'
+            })
 
         # If SerpAPI key is configured, use SerpAPI for Google Scholar results
         serpapi_key = _settings.get('serpapi_key')
-        if serpapi_key:
+        if search_engine == 'serpapi':
+            if not serpapi_key:
+                return jsonify({'error': 'SerpAPI key not configured. Please add it in Settings.'}), 400
             try:
                 params = {
                     'engine': 'google_scholar',
@@ -100,16 +125,19 @@ def search():
                 url = 'https://serpapi.com/search.json?' + urlencode(params)
                 r = _requests.get(url, timeout=15)
                 if r.status_code == 200:
-                    data = r.json()
+                    api_data = r.json()
                     papers = []
-                    for item in data.get('organic_results', [])[:limit]:
+                    for item in api_data.get('organic_results', [])[:limit]:
                         papers.append({'name': item.get('title'), 'url': item.get('link')})
-                    return jsonify({'success': True, 'papers': papers, 'count': len(papers)})
+                    return jsonify({'success': True, 'papers': papers, 'count': len(papers), 'engine': 'serpapi'})
                 else:
                     logger.info('SerpAPI search failed with status %s', r.status_code)
+                    return jsonify({'error': 'SerpAPI search failed'}), 400
             except Exception as e:
                 logger.exception('SerpAPI search exception: %s', e)
+                return jsonify({'error': f'SerpAPI error: {str(e)}'}), 400
 
+        # Default: use web scraping method
         results = sh.search(query, limit=limit)
         
         if 'err' in results:
@@ -122,7 +150,8 @@ def search():
         return jsonify({
             'success': True,
             'papers': results.get('papers', []),
-            'count': len(results.get('papers', []))
+            'count': len(results.get('papers', [])),
+            'engine': 'default'
         })
     
     except Exception as e:
@@ -269,6 +298,41 @@ def download_file(filename):
     
     except Exception as e:
         logger.error(f"File download error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/search-engines', methods=['GET'])
+def get_search_engines():
+    """Get available search engines"""
+    try:
+        from scihub.scihub import SCHOLARLY_AVAILABLE
+        
+        engines = {
+            'default': {
+                'name': 'Default (Web Scraping)',
+                'description': 'Direct Google Scholar web scraping',
+                'available': True
+            },
+            'scholarly': {
+                'name': 'Scholarly Library',
+                'description': 'More reliable scholarly library for Google Scholar',
+                'available': SCHOLARLY_AVAILABLE
+            },
+            'serpapi': {
+                'name': 'SerpAPI',
+                'description': 'SerpAPI Google Scholar engine (requires API key)',
+                'available': bool(_settings.get('serpapi_key'))
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'engines': engines,
+            'default_engine': 'scholarly' if SCHOLARLY_AVAILABLE else 'default'
+        })
+    
+    except Exception as e:
+        logger.error(f"Search engines error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 

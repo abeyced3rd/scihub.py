@@ -3,3 +3,4 @@ requests
 retrying
 pysocks
 flask
+scholarly
